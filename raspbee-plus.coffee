@@ -35,6 +35,7 @@ module.exports = (env) ->
         RaspBeeWaterSensor,
         RaspBeeRemoteControlNavigator,
         RaspBeeSwitch,
+        RaspBeeSmartSwitch,
         RaspBeeDimmer,
         RaspBeeCT,
         RaspBeeRGB,
@@ -103,14 +104,23 @@ module.exports = (env) ->
       if not @inConfig(config.deviceID, config.class)
         @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "Gateway: #{config.name}", config )
 
-      @Connector.getLight().then((devices)=>
+      @Connector.getSensor().then((devices)=>
+        env.logger.debug("sensor list")
+        env.logger.debug(devices)
+        for i of devices
+          dev=devices[i]
+          @addToCollection(i, dev)
+        @discoverMultiSensors()
+        return @Connector.getLight()
+      )
+      .then((devices)=>
         env.logger.debug("light list")
         env.logger.debug(devices)
         for i of devices
           dev=devices[i]
           @lclass = switch
             when dev.type == "On/Off plug-in unit" then "RaspBeeSwitch"
-            when dev.type == "Smart plug" then "RaspBeeSwitch"
+            when dev.type == "Smart plug" then "RaspBeeSmartSwitch"
             when dev.type == "Dimmable light" then "RaspBeeDimmer"
             when dev.type == "Color temperature light" then "RaspBeeCT"
             when dev.type == "Color light" then "RaspBeeRGB"
@@ -118,7 +128,23 @@ module.exports = (env) ->
             when dev.type == "Window covering device" then "RaspBeeCover"
             when dev.type == "Window covering controller" then "RaspBeeCover"
             when dev.type == "Warning device" then "RaspBeeWarning"
-          if @lclass == "RaspbeeCover"
+          if @lclass == "RaspBeeSmartSwitch"
+            if dev.uniqueid?
+              uniqueid = dev.uniqueid.split('-')
+              uniqueid = uniqueid[0].replace(/:/g,'')
+              config = {
+                class: @lclass,
+                name: dev.name,
+                id: "raspbee_s#{dev.etag}#{i}",
+                deviceID: i,
+              }
+              if @sensorCollection[uniqueid]?
+                config["sensorIDs"] = @sensorCollection[uniqueid].ids if @sensorCollection[uniqueid]?.ids?
+                config["configMap"] = @sensorCollection[uniqueid].config if @sensorCollection[uniqueid]?.config?
+                config["supports"] = @sensorCollection[uniqueid].supports if @sensorCollection[uniqueid]?.supports?
+              if not @inConfig(i, @lclass)
+                @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "SmartSwitch: #{config.name} - #{dev.modelid}", config )
+          else if @lclass == "RaspBeeCover"
             config = {
               class: @lclass,
               name: dev.name,
@@ -145,17 +171,9 @@ module.exports = (env) ->
             }
             if not @inConfig(i, @lclass)
               @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "Light: #{config.name} - #{dev.modelid}", config )
-
+        return @Connector.getGroup()
       )
-      @Connector.getSensor().then((devices)=>
-        env.logger.debug("sensor list")
-        env.logger.debug(devices)
-        for i of devices
-          dev=devices[i]
-          @addToCollection(i, dev)
-        @discoverMultiSensors()
-      )
-      @Connector.getGroup().then((devices)=>
+      .then((devices)=>
         env.logger.debug("group list")
         env.logger.debug(devices)
         for i of devices
@@ -206,13 +224,13 @@ module.exports = (env) ->
             config: []
             supportsBattery: false
         @sensorCollection[uniqueid].ids.push(parseInt(id))
-        if (device.config.battery?)
+        if (device.config?.battery?)
           @sensorCollection[uniqueid].supportsBattery=true
         if (device.type == "ZHASwitch")
           @sensorCollection[uniqueid].supports.push('switch')
         if (device.state.alarm?)
           @sensorCollection[uniqueid].supports.push('alarm')
-        if (device.config.temperature?) or (device.state.temperature?)
+        if (device.config?.temperature?) or (device.state.temperature?)
           @sensorCollection[uniqueid].supports.push('temperature')
         if (device.state.dark?)
           @sensorCollection[uniqueid].supports.push('dark')
@@ -941,6 +959,7 @@ module.exports = (env) ->
       @addAttribute  'presence',
         description: "online status",
         type: t.boolean
+      @attributes.state["hidden"] = true
       super()
       myRaspBeePlugin.on "event", (data) =>
         if data.resource is "lights" and data.id is @deviceID and data.event is "changed"
@@ -959,6 +978,7 @@ module.exports = (env) ->
         )
 
     parseEvent: (data) ->
+      env.logger.debug "Debug raspbee-switch data: " + JSON.stringify(data,null,2)
       @_setPresence(data.state.reachable) if data.state?.reachable?
       @_setState(data.state.on)
 
@@ -1001,6 +1021,167 @@ module.exports = (env) ->
       else
         env.logger.error("gateway not online")
         return Promise.reject(Error("gateway not online"))
+
+  class RaspBeeSmartSwitch extends env.devices.PowerSwitch
+
+    template: "raspbee-switch"    
+
+    constructor: (@config,lastState) ->
+      @id = @config.id
+      @name = @config.name
+      @deviceID = @config.deviceID
+      @sensorIDs = @config.sensorIDs
+      @_presence = lastState?.presence?.value or false
+      @_state = lastState?.state?.value or off
+
+      @addAttribute  'presence',
+        description: "online status",
+        type: t.boolean
+        hidden: false
+      @attributes.state["hidden"] = true
+
+      if "voltage" in @config.supports
+        @_voltage = lastState?.voltage?.value ? 0
+        @attributes.voltage = {
+          description: "the measured voltage"
+          type: "number"
+          unit: 'V'
+          acronym: 'voltage'
+        }
+      if "current" in @config.supports
+        @_current = lastState?.current?.value ? 0
+        @attributes.current = {
+          description: "the measured current"
+          type: "number"
+          unit: 'mA'
+          acronym: 'current'
+        }
+      if "power" in @config.supports
+        @_power = lastState?.power?.value ? 0
+        @attributes.power = {
+          description: "the measured power"
+          type: "number"
+          unit: 'W'
+          acronym: 'power'
+        }
+      if "consumption" in @config.supports
+        @_consumption = lastState?.consumption?.value ? 0
+        @attributes.consumption = {
+          description: "the measured consumption"
+          type: "number"
+          unit: 'Wh'
+          acronym: 'consumption'
+        }
+
+      super()
+      myRaspBeePlugin.on "event", (data) =>
+        if data.resource is "lights" and data.id is @deviceID and data.event is "changed"
+          @parseLightEvent(data)
+        if data.resource is "sensors" and data.id in @sensorIDs and data.event is "changed"
+          @parseSensorEvent(data)
+
+      @getInfos()
+      myRaspBeePlugin.on "ready", () =>
+        @getInfos()
+
+    getInfos: ->
+      if (myRaspBeePlugin.ready)
+        myRaspBeePlugin.Connector.getLight(@deviceID).then( (res) =>
+          @parseLightEvent(res)
+        ).catch( (error) =>
+          env.logger.error (error)
+        )
+        for id in @sensorIDs
+          myRaspBeePlugin.Connector.getSensor(id).then((res) =>
+            @parseSensorEvent(res)
+          ).catch( (error) =>
+            env.logger.error (error)
+          )
+
+    parseLightEvent: (data) ->
+      #env.logger.debug "Debug raspbee-smart-switch light-data: " + JSON.stringify(data,null,2)
+      @_setPresence(data.state.reachable) if data.state?.reachable?
+      @_setState(data.state.on) if data.state?.on?
+
+    parseSensorEvent: (data)->
+      #env.logger.debug "Debug raspbee-smart-switch sensor-data: " + JSON.stringify(data,null,2)
+      @_setConsumption(data.state.consumption) if data.state?.consumption?
+      @_setCurrent(data.state.current) if data.state?.current?
+      @_setPower(data.state.power) if data.state?.power?
+      @_setVoltage(data.state.voltage) if data.state?.voltage?
+
+    getState: -> Promise.resolve(@_state)
+    getConsumption: -> Promise.resolve(@_consumption)
+    getCurrent: -> Promise.resolve(@_current)
+    getPower: -> Promise.resolve(@_power)
+    getVoltage: -> Promise.resolve(@_voltage)
+
+    _setState: (value) ->
+      if @_state is value then return
+      @_state = value
+      @emit 'state', value
+
+    _setPower: (value) ->
+      if @_power is value then return
+      @_power = value
+      @emit 'power', value
+
+    _setConsumption: (value) ->
+      if @_consumption is value then return
+      @_consumption = value
+      @emit 'consumption', value
+
+    _setCurrent: (value) ->
+      if @_current is value then return
+      @_current = value
+      @emit 'current', value
+
+    _setVoltage: (value) ->
+      if @_voltage is value then return
+      @_voltage = value
+      @emit 'voltage', value
+
+
+    destroy: ->
+      super()
+
+    getTemplateName: -> "raspbee-switch"
+
+    _setPresence: (value) ->
+      if @_presence is value then return
+      @_presence = value
+      @emit 'presence', value
+
+    getPresence: -> Promise.resolve(@_presence)
+
+    changeStateTo: (state) ->
+      @_sendState({on: state}).then( () =>
+        return Promise.resolve()
+      ).catch( (error) =>
+        env.logger.error error
+        return Promise.reject(error)
+      )
+
+    _sendState: (param) ->
+      if (myRaspBeePlugin.ready)
+        myRaspBeePlugin.Connector.setLightState(@deviceID,param).then( (res) =>
+          env.logger.debug ("New value send to device #{@name}")
+          env.logger.debug (param)
+          if res[0].success?
+            return Promise.resolve()
+          else
+            if (res[0].error.type is 3 )
+              @_setPresence(false)
+              return Promise.reject(Error("device #{@name} not reachable"))
+            else if (res[0].error.type is 201 )
+              return Promise.reject(Error("device #{@name} is not modifiable. Device is set to off"))
+        ).catch( (error) =>
+          return Promise.reject(error)
+        )
+      else
+        env.logger.error("gateway not online")
+        return Promise.reject(Error("gateway not online"))
+
 
   class RaspBeeDimmer extends env.devices.DimmerActuator
 
@@ -1820,18 +2001,17 @@ module.exports = (env) ->
       env.logger.debug "moveTo: " + _currentPosition + ", target: " + _targetPosition + ", _transitSeconds: " + _transitSeconds + ", _positionStep: " + _positionStep
 
       updatePosition = () =>
-        if ((@_position < _targetPosition) and (@_position + _positionStep <= _targetPosition)) or ((@_position > _targetPosition) and (@_position + _positionStep >= _targetPosition))
-          @_setPosition(@_position + _positionStep)
-          env.logger.debug "updatePosition: " + (@_position + _positionStep)
-          @getPosition()
-          .then (position)=>
-            env.logger.debug "Position: " + position 
+        @getPosition()
+        .then (_position) =>
+          if ((_position < _targetPosition) and (_position + _positionStep <= _targetPosition)) or ((_position > _targetPosition) and (_position + _positionStep >= _targetPosition))
+            @_setPosition(_position + _positionStep)
+            env.logger.debug "updatePosition: " + (_position + _positionStep)
             @positionTimer = setTimeout(updatePosition,1000)
-        else
-          if send
-            @stopCoverSend()
           else
-            @stopCover()
+            if send
+              @stopCoverSend()
+            else
+              @stopCover()
       updatePosition()
 
     stopCover:() =>

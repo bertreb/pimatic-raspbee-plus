@@ -333,9 +333,9 @@ $(document).on 'templateinit', (event) ->
     afterRender: (elements) ->
       super(elements)
 
-      @closeButton = $(elements).find('[name=closeButton]')
-      @stopButton = $(elements).find('[name=stopButton]')
-      @openButton = $(elements).find('[name=openButton]')
+      @closeButton = $(elements).find('[name=closeCoverButton]')
+      @stopButton = $(elements).find('[name=stopCoverButton]')
+      @openButton = $(elements).find('[name=openCoverButton]')
       @updateActionButtons()
 
       @getAttribute('action')?.value.subscribe( => @updateActionButtons() )

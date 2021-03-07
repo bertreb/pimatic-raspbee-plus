@@ -169,6 +169,40 @@ module.exports = {
         description: "Raspbee address"
         type: "integer"
   },
+  RaspBeeSmartSwitch: {
+    title: "Raspbee Switch Device"
+    type: "object"
+    extensions: ["xAttributeOptions"]
+    properties:
+      deviceID:
+        description: "Raspbee address"
+        type: "integer"
+      sensorIDs:
+        description: "All the ids of the sensors"
+        type: "array"
+        default: []
+        items:
+          type: "integer"
+      supports:
+        description: "Feature List"
+        type: "array"
+        default: []
+        items:
+          type: "string"
+      configMap:
+        description: "Config map"
+        type: "array"
+        default: []
+        items:
+          type:"object"
+          properties:
+            id:
+              type: "integer"
+            parameter:
+              type: "string"
+            value:
+              type: "integer"
+  },
   RaspBeeDimmer: {
     title: "Raspbee Dimmer Light Device"
     type: "object"

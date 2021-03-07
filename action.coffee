@@ -538,9 +538,10 @@ module.exports = (env) ->
       #  transitionMs = timeMs/100
       #), yes)
 
-      if not match.getFullMatch()? and not valueTokens? and not stop? then return null
+      if not match.getFullMatch()? then return null
 
-      if valueTokens.length is 1 and not isNaN(valueTokens[0])
+      
+      if valueTokens? and valueTokens.length is 1 and not isNaN(valueTokens[0])
         unless 0.0 <= parseFloat(valueTokens[0]) <= 100.0
           context?.addError("Set must be between 0% and 100%")
           return null
@@ -557,10 +558,9 @@ module.exports = (env) ->
       super()
       @framework=framework
       @device=device
-      @stop=stop
-      @valueTokens=valueTokens
       assert @device?
-      assert @valueTokens? if valueTokens?
+      @valueTokens = valueTokens
+      @action = action
 
     setup: ->
       @dependOnDevice(@device)
@@ -569,15 +569,21 @@ module.exports = (env) ->
     _doExecuteAction: (simulate, value, transtime) =>
       return (
         if simulate
-          __("would set cover %s to %s%%", @device.name, value)
+          __("would set cover %s to %s", @device.name, value)
         else
-          @device.changeActionTo(action.action).then( => __("set cover %s to %s%%", @device.name, value) )
+          if @valueTokens?
+            @device.changeLiftTo(value).then( => __("set cover %s to %s", @device.name, value) )  
+          else
+            @device.changeActionTo(value).then( => __("set cover %s to %s", @device.name, value) )
       )
 
     executeAction: (simulate) =>
-      return @framework.variableManager.evaluateNumericExpression(@valueTokens).then( (value) =>
-        return @_doExecuteAction(simulate, value )
-      )
+      if @valueTokens?
+        return @framework.variableManager.evaluateNumericExpression(@valueTokens).then( (value) =>
+          return @_doExecuteAction(simulate, value )
+        )
+      else
+        return @_doExecuteAction(simulate, @action.action )
 
     hasRestoreAction: -> yes
     executeRestoreAction: (simulate) => Promise.resolve(@_doExecuteAction(simulate, @lastValue))
@@ -662,9 +668,7 @@ module.exports = (env) ->
       @framework=framework
       @device=device
       assert @device?
-      @valueTokens = null
       @action = action
-      #assert @valueTokens? if valueTokens?
 
     setup: ->
       @dependOnDevice(@device)
