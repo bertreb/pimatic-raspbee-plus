@@ -72,6 +72,11 @@ module.exports = (env) ->
           mobileFrontend.registerAssetFile 'css',  "pimatic-raspbee/app/raspbee-template.css"
           mobileFrontend.registerAssetFile 'js',  "pimatic-raspbee/app/spectrum.js"
           mobileFrontend.registerAssetFile 'css',  "pimatic-raspbee/app/spectrum.css"
+        if ( @apikey == "" or @apikey == undefined or @apikey == null)
+          env.logger.error ("api key is not set! perform a device discovery to generate a new one")
+        else
+          @connect()
+
 
       @framework.deviceManager.on 'discover', (eventData) =>
         if (! @ready)
@@ -88,10 +93,12 @@ module.exports = (env) ->
         else
           @scan()
 
+      ###
       if ( @apikey == "" or @apikey == undefined or @apikey == null)
         env.logger.error ("api key is not set! perform a device discovery to generate a new one")
       else
         @connect()
+      ###
 
     scan:() =>
       @sensorCollection = {}
@@ -154,14 +161,21 @@ module.exports = (env) ->
             if not @inConfig(i, @lclass)
               @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "Cover: #{config.name} - #{dev.modelid}", config )
           else if @lclass == "RaspBeeWarning"
-            config = {
-              class: @lclass,
-              name: dev.name,
-              id: "raspbee_w#{dev.etag}#{i}",
-              deviceID: i
-            }
-            if not @inConfig(i, @lclass)
-              @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "Warning: #{config.name} - #{dev.modelid}", config )
+            if dev.uniqueid?
+              uniqueid = dev.uniqueid.split('-')
+              uniqueid = uniqueid[0].replace(/:/g,'')
+              config = {
+                class: @lclass,
+                name: dev.name,
+                id: "raspbee_w#{dev.etag}#{i}",
+                deviceID: i,
+              }
+              if @sensorCollection[uniqueid]?
+                config["sensorIDs"] = @sensorCollection[uniqueid].ids if @sensorCollection[uniqueid]?.ids?
+                config["configMap"] = @sensorCollection[uniqueid].config if @sensorCollection[uniqueid]?.config?
+                config["supports"] = @sensorCollection[uniqueid].supports if @sensorCollection[uniqueid]?.supports?
+              if not @inConfig(i, @lclass)
+                @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "Warning: #{config.name} - #{dev.modelid}", config )
           else
             config = {
               class: @lclass,
@@ -2135,8 +2149,9 @@ module.exports = (env) ->
       @_presence = lastState?.presence?.value or false
       @_battery= lastState?.battery?.value or 0
       @_warning = "off" # lastState?.warning?.value ? "stop" # is warning off
-      @_status = lastState?.status?.value ? ""
+      @_alarm = lastState?.alarm?.value ? false
       @_tampered = lastState?.tampered?.value ? false 
+      @tamperedEnabled = @config.tampered ? false
 
       ###
       _sparklineDisablePosition = 
@@ -2159,21 +2174,22 @@ module.exports = (env) ->
         description: "warning action (stop, blink, select)",
         type: t.string
         hidden: true
-      ###
-      @addAttribute  'status',
-        description: "warning status",
-        type: t.string
-        acronym: "status"
-      ###
       @addAttribute  'tampered',
         description: "tampered",
         type: t.boolean
         acronym: "tampered"
+        hidden: not @tamperedEnabled
+      @addAttribute  'alarm',
+        description: "alarm",
+        type: t.boolean
+        acronym: "alarm"
 
       super()
       myRaspBeePlugin.on "event", (data) =>
         if data.resource is "lights" and data.id is @deviceID and data.event is "changed"
-          @parseEvent(data)
+          @parseLightEvent(data)
+        if data.resource is "sensors" and data.id in @sensorIDs and data.event is "changed"
+          @parseSensorEvent(data)
 
       @getInfos()
       myRaspBeePlugin.on "ready", () =>
@@ -2182,20 +2198,26 @@ module.exports = (env) ->
     getInfos: ->
       if (myRaspBeePlugin.ready)
         myRaspBeePlugin.Connector.getLight(@deviceID).then( (res) =>
-          @parseEvent(res)
+          @parseLightEvent(res)
         ).catch( (error) =>
           env.logger.error (error)
         )
+        for id in @sensorIDs
+          myRaspBeePlugin.Connector.getSensor(id).then((res) =>
+            @parseSensorEvent(res)
+          ).catch( (error) =>
+            env.logger.error (error)
+          )
 
-    parseEvent: (data) ->
+    parseLightEvent: (data) ->
+      #env.logger.debug "Debug raspbee-warning light-data: " + JSON.stringify(data,null,2)
       @_setPresence(data.state.reachable) if data.state?.reachable?
-      env.logger.debug "Received values: " + JSON.stringify(data,null,2)
-      if data.state?.tampered?
-        @_setTampered = Boolean data.state.tampered
-      else if data.state?.alert?
-        @_setWarning(String data.state.alert)
-      else
-        env.logger.debug "Unknown warning state: " + (JSON.stringify(data.state,null,2) if data.state?)
+      @_setWarning(String data.state.alert) if data.state?.alert?
+
+    parseSensorEvent: (data)->
+      #env.logger.debug "Debug raspbee-warning sensor-data: " + JSON.stringify(data,null,2)
+      @_setTampered(data.state.tampered) if data.state?.tampered?
+      @_setAlarm(data.state.alarm) if data.state?.alarm?
 
     destroy: ->
       super()
@@ -2214,17 +2236,17 @@ module.exports = (env) ->
       @emit 'warning', value
     getWarning: -> Promise.resolve(@_warning)
 
-    _setStatus: (value) ->
-      if @_status is value then return
-      @_status = value
-      @emit 'status', value
-    getStatus: -> Promise.resolve(@_status)
-
     _setTampered: (value) ->
       if @_tampered is value then return
       @_tampered = value
       @emit 'tampered', value
     getTampered: -> Promise.resolve(@_tampered)
+
+    _setAlarm: (value) ->
+      if @_alarm is value then return
+      @_alarm = value
+      @emit 'alarm', value
+    getAlarm: -> Promise.resolve(@_alarm)
 
     changeWarningTo: (warning, time) ->
       env.logger.debug "ChangeWarningTo " + warning
