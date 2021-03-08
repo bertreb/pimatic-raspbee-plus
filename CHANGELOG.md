@@ -10,5 +10,5 @@ All notable changes to this project will be documented in this file.
 * fix consumption attribute
 * fix WebSocket startup error
 
-## [0.0.2 - 0.1.5]
-### History see pimatic-raspbee 0.1.5
+## [0.0.2 - 0.1.7]
+### History see [pimatic-raspbee](https://github.com/treban/pimatic-raspbee/blob/master/CHANGELOG.md) 0.1.7
