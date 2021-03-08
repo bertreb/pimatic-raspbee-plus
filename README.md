@@ -184,10 +184,10 @@ recieved from Switch1 event "2001"
 
 
 ## CHANGELOG
-[-> see CHANGELOG](https://github.com/treban/pimatic-raspbee/blob/master/CHANGELOG.md)
+[-> see CHANGELOG](https://github.com/bertreb/pimatic-raspbee/blob/master/CHANGELOG.md)
 
 ----------------------------
-## Contributors
+## Contributors pimatic-raspbee
 
 * [kosta](https://github.com/treban)
 * [sweebee](https://github.com/sweebee)
