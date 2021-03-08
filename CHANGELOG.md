@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 * support for SmartSwitch
 * support for Cover
 * support for Warning devices (siren)
-* Added presence dot for RaspBeeSwitch
+* added presence dot for RaspBeeSwitch
 * fix consumption attribute
 * fix WebSocket startup error
 
