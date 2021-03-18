@@ -2,7 +2,7 @@
 All notable changes to this project will be documented in this file.
 
 ## [0.1.8]
-### Added  
+### Additions and fixes 
 * support for SmartSwitch
 * support for Cover
 * support for Warning devices (siren)
