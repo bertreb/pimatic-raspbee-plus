@@ -382,8 +382,13 @@ module.exports = {
       deviceID:
         description: "Raspbee address"
         type: "integer"
+      coverType:
+        description: "The cover type for handling commmands"
+        type: "string"
+        enum: ["TS130F","TS0302"]
+        default: "TS130F"
       rollerTime:
-        description: "time in seconds for cover to move from closed to open"
+        description: "In emulate mode the time in seconds for cover to move from closed to open"
         type: "number"
         default: 20
       invertedOut:
@@ -403,5 +408,38 @@ module.exports = {
       deviceID:
         description: "Raspbee address"
         type: "integer"
+      supportsBattery:
+        description: "does this sensor have a battery?"
+        type: "boolean"
+        default: false
+      tampered:
+        description: "Use the tampered option"
+        type: "boolean"
+        default: false
+      sensorIDs:
+        description: "All the ids of the sensors"
+        type: "array"
+        default: []
+        items:
+          type: "integer"
+      supports:
+        description: "Feature List"
+        type: "array"
+        default: []
+        items:
+          type: "string"
+      configMap:
+        description: "Config map"
+        type: "array"
+        default: []
+        items:
+          type:"object"
+          properties:
+            id:
+              type: "integer"
+            parameter:
+              type: "string"
+            value:
+              type: "integer"
   }
 }

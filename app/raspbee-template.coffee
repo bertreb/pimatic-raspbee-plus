@@ -422,7 +422,6 @@ $(document).on 'templateinit', (event) ->
       @silentButton = $(elements).find('[name=silentButton]')
       @soundButton = $(elements).find('[name=soundButton]')
       @longButton = $(elements).find('[name=longButton]')
-      @updateWarningButtons()
 
       @getAttribute('warning')?.value.subscribe( => @updateWarningButtons() )
 
@@ -432,6 +431,7 @@ $(document).on 'templateinit', (event) ->
 
       @presenceEle = $(elements).find('.attr-presence')
       @updateClass()
+      @updateWarningButtons()
 
     modeOff: -> @changeWarningTo "off"
     modeSilent: -> @changeWarningTo "silent"
@@ -461,6 +461,12 @@ $(document).on 'templateinit', (event) ->
           @silentButton.removeClass('ui-btn-active')
           @soundButton.removeClass('ui-btn-active')
           @longButton.addClass('ui-btn-active')
+        else
+          @offButton.addClass('ui-btn-active')
+          @silentButton.removeClass('ui-btn-active')
+          @soundButton.removeClass('ui-btn-active')
+          @longButton.removeClass('ui-btn-active')
+          
       return
 
     updateClass: ->

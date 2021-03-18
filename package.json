@@ -20,7 +20,7 @@
     "raspbee-config-schema.coffee",
     "device-config-schema.coffee"
   ],
-  "version": "0.1.8",
+  "version": "0.1.0",
   "license": "GPL-2.0",
   "homepage": "https://github.com/bertreb/pimatic-raspbee-plus",
   "configSchema": "raspbee-config-schema.coffee",
@@ -28,8 +28,7 @@
     "bluebird": "^3.5.5",
     "request-promise": "^4.2.4",
     "ws": "^5.2.2",
-    "cassert": "^0.1.2",
-    "decl-api": "0.0.24"
+    "cassert": "^0.1.2"
   },
   "devDependencies": {
     "blanket": "^1.2.3",

@@ -2,9 +2,16 @@ module.exports = (env) ->
 
   Promise = env.require 'bluebird'
   assert = env.require 'cassert'
-  t = env.require('decl-api').types
   Color = require('./color')(env)
   path = require('path')
+
+  t =
+    number: "number"
+    string: "string"
+    array: "array"
+    date: "date"
+    object: "object"
+    boolean: "boolean"
 
   RaspBeeConnection = require('./raspbee-connector')(env)
   RaspBeeAction = require('./action.coffee')(env)
@@ -93,13 +100,6 @@ module.exports = (env) ->
         else
           @scan()
 
-      ###
-      if ( @apikey == "" or @apikey == undefined or @apikey == null)
-        env.logger.error ("api key is not set! perform a device discovery to generate a new one")
-      else
-        @connect()
-      ###
-
     scan:() =>
       @sensorCollection = {}
       config = {
@@ -136,21 +136,20 @@ module.exports = (env) ->
             when dev.type == "Window covering controller" then "RaspBeeCover"
             when dev.type == "Warning device" then "RaspBeeWarning"
           if @lclass == "RaspBeeSmartSwitch"
+            config = {
+              class: @lclass,
+              name: dev.name,
+              id: "raspbee_s#{dev.etag}#{i}",
+              deviceID: i
+            }
             if dev.uniqueid?
               uniqueid = dev.uniqueid.split('-')
               uniqueid = uniqueid[0].replace(/:/g,'')
-              config = {
-                class: @lclass,
-                name: dev.name,
-                id: "raspbee_s#{dev.etag}#{i}",
-                deviceID: i,
-              }
-              if @sensorCollection[uniqueid]?
-                config["sensorIDs"] = @sensorCollection[uniqueid].ids if @sensorCollection[uniqueid]?.ids?
-                config["configMap"] = @sensorCollection[uniqueid].config if @sensorCollection[uniqueid]?.config?
-                config["supports"] = @sensorCollection[uniqueid].supports if @sensorCollection[uniqueid]?.supports?
-              if not @inConfig(i, @lclass)
-                @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "SmartSwitch: #{config.name} - #{dev.modelid}", config )
+              config["sensorIDs"] = if @sensorCollection[uniqueid]?.ids? then @sensorCollection[uniqueid].ids else []
+              config["configMap"] = if @sensorCollection[uniqueid]?.config? then @sensorCollection[uniqueid].config else []
+              config["supports"] = if @sensorCollection[uniqueid]?.supports? then @sensorCollection[uniqueid].supports else []
+            if not @inConfig(i, @lclass)
+              @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "SmartSwitch: #{config.name} - #{dev.modelid}", config )
           else if @lclass == "RaspBeeCover"
             config = {
               class: @lclass,
@@ -161,21 +160,22 @@ module.exports = (env) ->
             if not @inConfig(i, @lclass)
               @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "Cover: #{config.name} - #{dev.modelid}", config )
           else if @lclass == "RaspBeeWarning"
+            config = {
+              class: @lclass,
+              name: dev.name,
+              id: "raspbee_w#{dev.etag}#{i}",
+              deviceID: i,
+              supportsBattery: false
+            }
             if dev.uniqueid?
               uniqueid = dev.uniqueid.split('-')
               uniqueid = uniqueid[0].replace(/:/g,'')
-              config = {
-                class: @lclass,
-                name: dev.name,
-                id: "raspbee_w#{dev.etag}#{i}",
-                deviceID: i,
-              }
-              if @sensorCollection[uniqueid]?
-                config["sensorIDs"] = @sensorCollection[uniqueid].ids if @sensorCollection[uniqueid]?.ids?
-                config["configMap"] = @sensorCollection[uniqueid].config if @sensorCollection[uniqueid]?.config?
-                config["supports"] = @sensorCollection[uniqueid].supports if @sensorCollection[uniqueid]?.supports?
-              if not @inConfig(i, @lclass)
-                @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "Warning: #{config.name} - #{dev.modelid}", config )
+              config["sensorIDs"] = if @sensorCollection[uniqueid]?.ids? then @sensorCollection[uniqueid].ids else []
+              config["configMap"] = if @sensorCollection[uniqueid]?.config? then @sensorCollection[uniqueid].config else []
+              config["supports"] = if @sensorCollection[uniqueid]?.supports? then @sensorCollection[uniqueid].supports else []
+              config["supportsBattery"] = @sensorCollection[uniqueid].supportsBattery if @sensorCollection[uniqueid]?.supportsBattery?
+            if not @inConfig(i, @lclass)
+              @framework.deviceManager.discoveredDevice( 'pimatic-raspbee ', "Warning: #{config.name} - #{dev.modelid}", config )
           else
             config = {
               class: @lclass,
@@ -307,16 +307,12 @@ module.exports = (env) ->
     connect: () =>
       @Connector = new RaspBeeConnection(@gatewayip,@gatewayport,@apikey)
       @Connector.on "event", (data) =>
-      #  env.logger.debug(data)
         @emit "event", (data)
       @Connector.on "ready", =>
         @ready = true
         @emit "ready"
       @Connector.on "error", =>
         @ready = false
-      #@framework.on('destroy', (context) =>
-      #  env.logger.info("Plugin finish...")
-      #)
 
     inConfig: (deviceID, className) =>
       deviceID = parseInt(deviceID)
@@ -525,8 +521,14 @@ module.exports = (env) ->
           description: "suncalc"
           type: "string"
         }
+      if "tampered" in @config.supports
+        @_tampered = lastState?.tampered?.value
+        @attributes.tampered = {
+          description: "tampered"
+          type: "boolean"
+        }
 
-      #FIXME tampered missing
+      #FIXME tampered missing => fixed
 
       super()
       myRaspBeePlugin.on "event", (data) =>
@@ -564,6 +566,7 @@ module.exports = (env) ->
       @_setVibration(data.state.vibration) if data.state?.vibration?
       @_setVoltage(data.state.voltage) if data.state?.voltage?
       @_setWater(data.state.water) if data.state?.water?
+      @_setTampered(data.state.tampered) if data.state?.tampered?
 
       if data.state?.buttonevent? and not first
         for cmdval in @CmdMap
@@ -731,6 +734,11 @@ module.exports = (env) ->
       @_switch = value
       @emit 'switch', @_switch
 
+    _setTampered: (value) ->
+      if @_tampered is value then return
+      @_tampered = value
+      @emit 'tampered', value
+
     getAlarm: -> Promise.resolve(@_alarm)
     getBattery: -> Promise.resolve(@_battery)
     getCarbon: -> Promise.resolve(@_carbon)
@@ -753,6 +761,7 @@ module.exports = (env) ->
     getVibration: -> Promise.resolve(@_vibration)
     getVoltage: -> Promise.resolve(@_voltage)
     getWater: -> Promise.resolve(@_water)
+    getTampered: -> Promise.resolve(@_tampered)
 
     registerPredicate: (@Cmd) =>
       @CmdMap.push @Cmd
@@ -1044,7 +1053,7 @@ module.exports = (env) ->
       @id = @config.id
       @name = @config.name
       @deviceID = @config.deviceID
-      @sensorIDs = @config.sensorIDs
+      @sensorIDs = @config.sensorIDs ? []
       @_presence = lastState?.presence?.value or false
       @_state = lastState?.state?.value or off
 
@@ -1872,6 +1881,7 @@ module.exports = (env) ->
     constructor: (@config,lastState) ->
       @id = @config.id
       @name = @config.name
+      @coverType = @config.coverType
       @deviceID = @config.deviceID
       @_presence = lastState?.presence?.value or false
       @_battery= lastState?.battery?.value or 0
@@ -1941,24 +1951,57 @@ module.exports = (env) ->
     parseEvent: (data) ->
       @_setPresence(data.state.reachable) if data.state?.reachable?
       env.logger.debug "Received values: " + JSON.stringify(data,null,2)
-      if data.state.lift?
+
+      lift = null
+      if data.state?.bri? and not data.state?.lift?
+        lift = String (@briToLift(data.state.bri))
+      else if data.state?.lift?
         lift = String data.state.lift
-        if lift is "stop" or (Number lift) is 50
-          @stopCover()
-        else 
-          if not @_runningAction # action triggered on shutter control
-            if (Number lift) is @_liftOpenReceived
-              @_setLift(100)
-              @moveTo(100, false)
-            else if (Number lift) is @_liftClosedReceived
-              @_setLift(0)
-              @moveTo(0, false)
+
+      switch @coverType
+        when "TS0302"
+          if lift?
+            if lift is "stop" or ((Number lift) > 0 and (Number lift) < 100)
+              @stopCover()
+            else 
+              if not @_runningAction # action triggered on shutter control
+                if (Number lift) is @_liftOpenReceived
+                  @_setLift(100)
+                  @moveTo(100, false)
+                else if (Number lift) is @_liftClosedReceived
+                  @_setLift(0)
+                  @moveTo(0, false)
+                else
+                  env.logger.debug "Lift action '#{lift}' not supported"
+
+        when "TS130F"
+          if lift?
+            if data.state?.on? and data.state?.open?
+              if data.state.on and data.state.open
+                env.logger.debug "Stop received"
+                #@stopCover()
+            if not @_runningAction # action triggered on shutter control
+              if (Number lift) is @_liftOpenReceived
+                @_setLift(100)
+                @_setPosition(100)
+                @moveTo(100, false)
+              else if (Number lift) is @_liftClosedReceived
+                @_setLift(0)
+                @_setPosition(0)
+                @moveTo(0, false)
+              else
+                if @_invertedIn
+                  _lift = Number lift
+                else
+                  _lift = 100 - ( Number lift )
+                @_setPosition(Number(_lift))
+                @_setLift(Number(_lift))
+                env.logger.debug "Lift set to '#{_lift}'"
             else
-              env.logger.debug "Lift action '#{data.state.lift}' not supported"
-          else
-            env.logger.debug "Action already running"
-      else
-        env.logger.debug "No lift value!"
+              env.logger.debug "Action already running"
+
+        else
+          env.logger.debug "CoverType #{@coverType}, not implemented"
 
 
     destroy: ->
@@ -2002,37 +2045,45 @@ module.exports = (env) ->
 
       _currentPosition = @_position
       _targetPosition = position
-      _transitSeconds = Math.abs(position - _currentPosition) * @_rollerTime / 100
-      _positionStep = Math.round((position - _currentPosition) / _transitSeconds)
-
       if @_position < _targetPosition
         @_setStatus "opening"
-        @_setAction('open')
+        @_setAction "open"
       if @_position > _targetPosition
         @_setStatus "closing"
-        @_setAction('close')
+        @_setAction "close"
+      env.logger.debug "move From: " + _currentPosition + ", To: " + _targetPosition 
+      _transitSeconds = Math.abs(position - _currentPosition) * @_rollerTime / 100
+      _positionStep = Math.ceil((position - _currentPosition) / _transitSeconds)
+      env.logger.debug " +--> transitSeconds: " + _transitSeconds + ", positionStep: " + _positionStep
 
-      env.logger.debug "moveTo: " + _currentPosition + ", target: " + _targetPosition + ", _transitSeconds: " + _transitSeconds + ", _positionStep: " + _positionStep
-
+      _send = send
       updatePosition = () =>
         @getPosition()
         .then (_position) =>
+          #env.logger.debug "_position + _positionStep : " + (_position + _positionStep) 
+          if _position + _positionStep > 100
+            _position = 100
+            @_setPosition(100)
+          if _position + _positionStep < 0
+            _position = 0
+            @_setPosition(0)
           if ((_position < _targetPosition) and (_position + _positionStep <= _targetPosition)) or ((_position > _targetPosition) and (_position + _positionStep >= _targetPosition))
             @_setPosition(_position + _positionStep)
             env.logger.debug "updatePosition: " + (_position + _positionStep)
             @positionTimer = setTimeout(updatePosition,1000)
           else
-            if send
+            if _send
               @stopCoverSend()
             else
               @stopCover()
       updatePosition()
 
     stopCover:() =>
-      clearTimeout(@positionTimer)
+      clearTimeout(@positionTimer) if @positionTimer?
       @getPosition()
       .then (position)=>
         @_setLift(position) # update target position
+        @_setStatus('stop')
         @_setAction('stop')
         if position is 0
           @_setStatus('closed')
@@ -2044,34 +2095,37 @@ module.exports = (env) ->
       @stopCover()
       param =
         stop: true
-      env.logger.debug "stopCover, @_sendState: " + JSON.stringify(param,null,2)
-      #return Promise.resolve()
+      env.logger.debug "stopCoverSend, @_sendState: " + JSON.stringify(param,null,2)
       @_sendState(param).then( () =>
         return Promise.resolve()
       ).catch( (error) =>
         return Promise.reject(error)
       )
 
+    calibrate: () =>
+      # curl -H 'Content-Type: application/json' -X PUT -d '{"calibration": true}' http://IP:PORT/api/KEY/lights/ID
 
-    changeLiftTo: (_lift, time) ->
+    liftToBri: (lift)=>
+      return Math.round (lift * 2.54)
+    briToLift: (bri)=>
+      return Math.round (bri / 2.54)
+
+    changeLiftTo: (_lift) ->
       # slider 100 is fully opened, 0 is closed (dimmer slider)
       if _lift is @_position then return
 
       @_runningAction = true
       if _lift > @_position # open
         param = 
-          #open: true # slider 0 means cover fully closed and open=>false
-          lift: @_liftOpenSend # 0 # inverse value of slider
+          lift: @_liftOpenSend # inverse value of slider + invertedOut
+          bri: @liftToBri(@_liftOpenSend)
       if _lift < @_position # close
         param =
-          #open: false # slider 0 means cover fully closed and open=>false
-          lift: @_liftClosedSend # 100 # inverse value of slider
-      @moveTo(_lift, true) # lift is percentage closed
+          lift: @_liftClosedSend # inverse value of slider + invertedOut
+          bri: @liftToBri(@_liftClosedSend)
+      @moveTo(_lift, true) # lift is percentage closed, true is send stop after rollerTime
       env.logger.debug "changeLiftTo, @_sendState: " + JSON.stringify(param,null,2)
-      #return Promise.resolve()
       @_sendState(param).then( () =>
-        #@_setLift(lift) # set gui (slider) to target position
-        #@moveTo(lift) # start position change to target position
         return Promise.resolve()
       ).catch( (error) =>
         return Promise.reject(error)
@@ -2082,21 +2136,25 @@ module.exports = (env) ->
       @_runningAction = true
       switch action
         when 'close'
+          #if @_position <= 0 then return Promise.resolve()
           @_setLift(0)
-          @moveTo(0, false) # is 100% closed
+          @moveTo(0, false) #true)
           param =
             open: false
-            lift: @_liftClosedSend # 100
+            lift: @_liftClosedSend
+            bri: @liftToBri(@_liftClosedSend)
         when 'stop'
           @stopCover()
           param =
             stop: true
         when 'open'
+          #if @_position >= 100 then return Promise.resolve()
           @_setLift(100)
-          @moveTo(100, false) # is 100% opened
+          @moveTo(100, false) # true)
           param =
             open: true
-            lift: @_liftOpenSend #0
+            lift: @_liftOpenSend
+            bri: @liftToBri(@_liftOpenSend)
       env.logger.debug "changeActionTo, @_sendState: " + JSON.stringify(param,null,2)
       @_sendState(param).then( () =>
         @_setAction(action)
@@ -2105,9 +2163,31 @@ module.exports = (env) ->
         return Promise.reject(error)
       )
 
-    _sendState: (param) ->
-      #return Promise.resolve()
-      #env.logger.debug "_sendState: " + JSON.stringify(param,null,2) + ", myRaspBeePlugin.ready: " + myRaspBeePlugin.ready
+    _sendState: (paramIn) ->
+
+      param = {}
+      switch @coverType
+        when "TS130F"          
+          if paramIn.stop
+            param["stop"] = true
+          else
+            param["bri"] = paramIn.bri if paramIn.bri?
+            param["lift"] = paramIn.lift if paramIn.lift?
+            param["open"] = paramIn.open if paramIn.open?
+        when "TS0302"
+          if paramIn.stop
+            param["stop"] = true
+            param["lift"] = "stop"
+          else if paramIn.lift?
+            if paramIn.lift is 100 # is fully open
+              param["lift"] = 0
+              param["open"] = true
+            else
+              param["lift"] = 100
+              param["open"] = false
+
+      #env.logger.debug "Parameters send: " + JSON.stringify(param,null,2)
+
       if (myRaspBeePlugin.ready)
         myRaspBeePlugin.Connector.setLightState(@deviceID,param).then( (res) =>
           env.logger.debug ("New value send to device #{@name}")
@@ -2146,43 +2226,65 @@ module.exports = (env) ->
       @id = @config.id
       @name = @config.name
       @deviceID = @config.deviceID
+      @sensorIDs = @config.sensorIDs ? []
       @_presence = lastState?.presence?.value or false
-      @_battery= lastState?.battery?.value or 0
-      @_warning = "off" # lastState?.warning?.value ? "stop" # is warning off
-      @_alarm = lastState?.alarm?.value ? false
-      @_tampered = lastState?.tampered?.value ? false 
+      @_warning = "off" #lastState?.warning?.value ? "off" # is warning off
       @tamperedEnabled = @config.tampered ? false
-
-      ###
-      _sparklineDisablePosition = 
-        name: "position"
-        displaySparkline: false
-      @positionSet = false
-      for xAttr in @config.xAttributeOptions
-        if xAttr.name is "position"
-          @positionSet = true      
-      unless @positionSet 
-        @config.xAttributeOptions.push _sparklineDisablePosition
-      ###
 
       @addAttribute  'presence',
         description: "online status",
-        type: t.boolean
+        type: "boolean"
         labels: ['online', 'offline']
         hidden: false
       @addAttribute  'warning',
         description: "warning action (stop, blink, select)",
-        type: t.string
+        type: "string"
         hidden: true
-      @addAttribute  'tampered',
-        description: "tampered",
-        type: t.boolean
-        acronym: "tampered"
-        hidden: not @tamperedEnabled
-      @addAttribute  'alarm',
-        description: "alarm",
-        type: t.boolean
-        acronym: "alarm"
+
+      if "alarm" in @config.supports
+        @_alarm = lastState?.alarm?.value ? false
+        @attributes.alarm = {
+          description: "alarm detected"
+          type: "boolean"
+          labels: ['active', 'off']
+          acronym: "alarm"
+        }
+      if "tampered" in @config.supports
+        @_tampered = lastState?.tampered?.value ? false
+        @attributes.tampered = {
+          description: "tampered detection"
+          type: "boolean"
+          labels: ['true', 'false']
+          acronym: "tampered"
+          hidden: not @tamperedEnabled
+        }
+      if @config.supportsBattery
+        @_battery = lastState?.battery?.value ? 100
+        @attributes.battery = {
+          description: "Battery",
+          type: "number"
+          displaySparkline: false
+          unit: "%"
+          icon:
+            noText: true
+            mapping: {
+              'icon-battery-empty': 0
+              'icon-battery-fuel-1': [0, 20]
+              'icon-battery-fuel-2': [20, 40]
+              'icon-battery-fuel-3': [40, 60]
+              'icon-battery-fuel-4': [60, 80]
+              'icon-battery-fuel-5': [80, 100]
+              'icon-battery-filled': 100
+            }
+        }
+      if "lowbattery" in @config.supports
+        @_lowbattery = lastState?.lowbattery?.value ? false
+        @attributes.lowbattery = {
+          description: "low battery detection"
+          type: "boolean"
+          labels: ['true', 'false']
+          acronym: "lowbattery"
+        }
 
       super()
       myRaspBeePlugin.on "event", (data) =>
@@ -2216,8 +2318,10 @@ module.exports = (env) ->
 
     parseSensorEvent: (data)->
       #env.logger.debug "Debug raspbee-warning sensor-data: " + JSON.stringify(data,null,2)
+      @_setBattery(data.config.battery) if data.config?.battery?
       @_setTampered(data.state.tampered) if data.state?.tampered?
       @_setAlarm(data.state.alarm) if data.state?.alarm?
+      @_setLowbattery(data.state.lowbattery) if data.state?.lowbattery?
 
     destroy: ->
       super()
@@ -2247,6 +2351,18 @@ module.exports = (env) ->
       @_alarm = value
       @emit 'alarm', value
     getAlarm: -> Promise.resolve(@_alarm)
+
+    _setLowbattery: (value) ->
+      if @_lowbattery is value then return
+      @_lowbattery = value
+      @emit 'lowbattery', value
+    getLowbattery: -> Promise.resolve(@_lowbattery)
+
+    _setBattery: (value) ->
+      if @_battery is value then return
+      @_battery = value
+      @emit 'battery', value
+    getBattery: -> Promise.resolve(@_battery)
 
     changeWarningTo: (warning, time) ->
       env.logger.debug "ChangeWarningTo " + warning
