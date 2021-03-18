@@ -1,7 +1,7 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## [0.1.8]
+## [0.1.0]
 ### Additions and fixes 
 * support for SmartSwitch
 * support for Cover
