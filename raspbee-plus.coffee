@@ -74,11 +74,11 @@ module.exports = (env) ->
       @framework.on "after init", =>
         mobileFrontend = @framework.pluginManager.getPlugin 'mobile-frontend'
         if mobileFrontend?
-          mobileFrontend.registerAssetFile 'js',   "pimatic-raspbee/app/raspbee-template.coffee"
-          mobileFrontend.registerAssetFile 'html', "pimatic-raspbee/app/raspbee-template.jade"
-          mobileFrontend.registerAssetFile 'css',  "pimatic-raspbee/app/raspbee-template.css"
-          mobileFrontend.registerAssetFile 'js',  "pimatic-raspbee/app/spectrum.js"
-          mobileFrontend.registerAssetFile 'css',  "pimatic-raspbee/app/spectrum.css"
+          mobileFrontend.registerAssetFile 'js',   "pimatic-raspbee-plus/app/raspbee-template.coffee"
+          mobileFrontend.registerAssetFile 'html', "pimatic-raspbee-plus/app/raspbee-template.jade"
+          mobileFrontend.registerAssetFile 'css',  "pimatic-raspbee-plus/app/raspbee-template.css"
+          mobileFrontend.registerAssetFile 'js',  "pimatic-raspbee-plus/app/spectrum.js"
+          mobileFrontend.registerAssetFile 'css',  "pimatic-raspbee-plus/app/spectrum.css"
         if ( @apikey == "" or @apikey == undefined or @apikey == null)
           env.logger.error ("api key is not set! perform a device discovery to generate a new one")
         else
