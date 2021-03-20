@@ -153,9 +153,9 @@ This button sends for all devices all config parameter (configMap) to the deconz
 
 Actions for raspbee-plus
 
-* **"set raspbee -name- to open|stop|close** (cover)
+* **"set raspbee -name- to open|stop|close"** (cover)
 
-* **"set raspbee -name- to off|silent|sound|long** (warning)
+* **"set raspbee -name- to off|silent|sound|long"** (warning)
 
 
 **Example:**  
