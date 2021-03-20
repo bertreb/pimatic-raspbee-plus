@@ -151,6 +151,13 @@ This button sends for all devices all config parameter (configMap) to the deconz
 
 * **"dim raspbee -name- to -value-"**
 
+Actions for raspbee-plus
+
+* **"set raspbee -name- to open|stop|close** (cover)
+
+* **"set raspbee -name- to off|silent|sound|long** (warning)
+
+
 **Example:**  
 set color temp Light1 to 10 and set color rgb Light2 to #121212 and activate group scene All-ON
 
